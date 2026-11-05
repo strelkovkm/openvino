@@ -6,11 +6,13 @@
 
 #include <algorithm>
 #include <functional>
+#include <openvino/op/gelu.hpp>
 
 #include "../common/converters/binary_eltwise.hpp"
 #include "../common/converters/concat.hpp"
 #include "../common/converters/floor.hpp"
 #include "../common/converters/gather.hpp"
+#include "../common/converters/gelu.hpp"
 #include "../common/converters/grouped_matmul.hpp"
 #include "../common/converters/matmul.hpp"
 #include "../common/converters/reduce.hpp"
@@ -64,6 +66,8 @@ using namespace ov::pass::pattern;
 using namespace ov::op;
 
 ReluPattern::ReluPattern() : MarkPattern(wrap_type<v0::Relu>({any_input()}, elementwise_no_broadcast_predicate), ConvertRelu()) {}
+
+GeluPattern::GeluPattern() : MarkPattern(wrap_type<v0::Gelu, v7::Gelu>({any_input()}, elementwise_no_broadcast_predicate), ConvertGelu()) {}
 
 ConcatPattern::ConcatPattern() : MarkPattern(wrap_type<v0::Concat>(), ConvertConcat()) {}
 
