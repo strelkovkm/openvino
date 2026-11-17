@@ -418,29 +418,29 @@ public:
 
             const auto& ps = layout.get_partial_shape();
             OPENVINO_ASSERT(ps.size() >= rank, "[GPU] mlir_primitive '", instance.id(), "': expected rank ", rank, ", got ", ps.size());
-            for (size_t i = ps.size(); i--;) {
+            for (size_t i = 0; i < ps.size(); ++i) {
                 OPENVINO_ASSERT(ps[i].is_static(), "[GPU] mlir_primitive '", instance.id(), "' requires static buffer dimensions");
-                OPENVINO_ASSERT(i < rank || ps[i].get_length() == 1,
-                                "[GPU] mlir_primitive '",
-                                instance.id(),
-                                "': trailing dimension ",
-                                i,
-                                " of ",
-                                argument(),
-                                " is not 1");
             }
+            size_t start = 0, end = ps.size();
+            while (end - start > rank && ps[end - 1].get_length() == 1) --end;
+            while (end - start > rank && ps[start].get_length() == 1) ++start;
+            OPENVINO_ASSERT(end - start == rank,
+                            "[GPU] mlir_primitive '",
+                            instance.id(),
+                            "': extra non-unit dimensions in ",
+                            argument());
             // Element strides in logical order, derived from the format.
             const auto pitches = layout.get_pitches();
-            OPENVINO_ASSERT(pitches.size() >= rank, "[GPU] mlir_primitive '", instance.id(), "', ", argument(), ": unexpected pitches rank ", pitches.size());
+            OPENVINO_ASSERT(pitches.size() >= end, "[GPU] mlir_primitive '", instance.id(), "', ", argument(), ": unexpected pitches rank ", pitches.size());
 
             builder.storeMemref(
                 held,
                 rank,
                 [&](unsigned i) {
-                    return ps[i].get_length();
+                    return ps[start + i].get_length();
                 },
                 [&](unsigned i) {
-                    return static_cast<int64_t>(pitches[i]);
+                    return static_cast<int64_t>(pitches[start + i]);
                 });
         };
 
