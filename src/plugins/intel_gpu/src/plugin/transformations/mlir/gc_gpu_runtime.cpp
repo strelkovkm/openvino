@@ -585,27 +585,27 @@ public:
 
             const auto& ps = layout.get_partial_shape();
             OPENVINO_ASSERT(ps.size() >= rank, "[GPU] mlir_primitive '", instance.id(), "': expected rank ", rank, ", got ", ps.size());
-            llvm::SmallVector<int64_t, 12> strides(ps.size());
-            int64_t stride = 1;
-            for (size_t i = ps.size(); i--;) {
+            for (size_t i = 0; i < ps.size(); ++i) {
                 OPENVINO_ASSERT(ps[i].is_static(), "[GPU] mlir_primitive '", instance.id(), "' requires static buffer dimensions");
-                OPENVINO_ASSERT(i < rank || ps[i].get_length() == 1,
-                                "[GPU] mlir_primitive '",
-                                instance.id(),
-                                "': trailing dimension ",
-                                i,
-                                " of ",
-                                argument(),
-                                " is not 1");
+            }
+            size_t start = 0, end = ps.size();
+            while (end - start > rank && ps[end - 1].get_length() == 1) --end;
+            while (end - start > rank && ps[start].get_length() == 1) ++start;
+            OPENVINO_ASSERT(end - start == rank,
+                            "[GPU] mlir_primitive '", instance.id(), "': extra non-unit dimensions in ", argument());
+            llvm::SmallVector<int64_t, 12> dims(rank), strides(rank);
+            int64_t stride = 1;
+            for (size_t i = rank; i--;) {
+                dims[i] = ps[start + i].get_length();
                 strides[i] = stride;
-                stride *= ps[i].get_length();
+                stride *= dims[i];
             }
 
             builder.storeMemref(
                 held,
                 rank,
                 [&](unsigned i) {
-                    return ps[i].get_length();
+                    return dims[i];
                 },
                 [&](unsigned i) {
                     return strides[i];
