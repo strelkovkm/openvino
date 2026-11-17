@@ -5,6 +5,9 @@
 #include "pooling_inst.h"
 #include "kv_cache_inst.h"
 #include "gather_inst.h"
+#ifdef ENABLE_MLIR_FOR_GPU
+#    include "mlir_primitive_inst.h"
+#endif
 #include "primitive_inst.h"
 #include "activation_inst.h"
 #include "concatenation_inst.h"
@@ -450,7 +453,11 @@ static bool is_optimizable_padding_for_crop(const crop_node& node,
 // gemm is here for the same reason (ocl gemm_tiled_opt), reached when a non-f16 precision
 // decomposes sdpa. Unconditional: preferred impl type is not the impl that gets built.
 static bool requires_contiguous_input(const program_node& node) {
-    return node.is_type<scaled_dot_product_attention>() || node.is_type<gemm>();
+    return node.is_type<scaled_dot_product_attention>() || node.is_type<gemm>()
+#ifdef ENABLE_MLIR_FOR_GPU
+        || node.is_type<mlir_primitive>()
+#endif
+        ;
 }
 
 bool crop_in_place_optimization::can_crop_be_optimized_along_feature(const layout& crop_layout,
@@ -1092,6 +1099,9 @@ void prepare_buffer_fusing::run(program& p) {
         }
 
         program_helpers::do_for_types<crop>(*node, [](crop_node& node) {
+            if (std::any_of(node.get_users().begin(), node.get_users().end(),
+                            [](const program_node* u) { return requires_contiguous_input(*u); }))
+                return;
             auto pred_param = node.get_dependency(0).get_kernel_impl_params();
             auto pred_layout = pred_param->get_output_layout();
             if (!crop_in_place_optimization::match(node, *node.get_kernel_impl_params(), pred_layout)) {
