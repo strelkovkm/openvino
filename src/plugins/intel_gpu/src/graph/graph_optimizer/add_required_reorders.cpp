@@ -11,6 +11,9 @@
 #include "convert_color_inst.h"
 #include "fully_connected_inst.h"
 #include "mvn_inst.h"
+#ifdef ENABLE_MLIR_FOR_GPU
+#    include "mlir_primitive_inst.h"
+#endif
 #include "pass_manager.h"
 #include "program_node.h"
 
@@ -279,6 +282,26 @@ void add_required_reorders::run(program& p) {
         }
 
         eliminate_pad_for_onednn_impl(p, *usr);
+
+#ifdef ENABLE_MLIR_FOR_GPU
+        if (usr->is_type<mlir_primitive>()) {
+            for (size_t idx = 0; idx < usr->get_dependencies().size(); ++idx) {
+                auto dep_port = usr->get_dependency_with_port(idx);
+                auto& dep = *dep_port.first;
+                auto port = dep_port.second;
+                if (!dep.is_in_data_flow() || dep.is_constant()) continue;
+                auto in_layout = dep.get_output_layout(false, port);
+                if (in_layout.data_padding) {
+                    cldnn::layout layout_wo_padding = in_layout;
+                    layout_wo_padding.data_padding = cldnn::padding{};
+                    auto new_reorder = std::make_shared<reorder>(dep.id() + "_mlir_nopad_" + usr->id(), dep.id(), layout_wo_padding);
+                    auto& new_reorder_node = p.get_or_create(new_reorder);
+                    p.add_intermediate(new_reorder_node, *usr, idx);
+                    new_reorder_node.recalc_output_layouts(false);
+                }
+            }
+        }
+#endif
 
         if (usr->type()->has_impl_for(*usr)) {
             continue;
